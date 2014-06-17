@@ -2,11 +2,12 @@
 
 use File::Copy;
 use File::Basename;
+use version;
 
 sub readRevisions( $ ){
 	my $file = shift;
 	my %rlog = ();
-	open(RLOG, "rlog $file |");
+	open(RLOG, "rlog \"$file\" |");
 	while(my $line = <RLOG>) {
 		chomp $line;
 		if($line =~ /^revision (.*)/) {
@@ -55,7 +56,7 @@ sub getWorkingFile( $ ){
 	return $file;
 }
 
-sub sortByDate { $a->{'date'} cmp $b->{'date'} };
+sub sortByRevision { version->parse($a->{'revision'}) cmp version->parse($b->{'revision'}) };
 
 sub combineRcs( $$$ ){
 	my $rcsFileA = shift;
@@ -66,10 +67,17 @@ sub combineRcs( $$$ ){
 	my %rlogB = readRevisions($rcsFileB);
 	my %rlog = %rlogB; @rlog{keys %rlogA} = values %rlogA;
 
-	foreach $revision (sort sortByDate values %rlog) {
+	my $lastdate = "";
+
+	foreach $revision (sort sortByRevision values %rlog) {
 		print "$revision->{'revision'}; $revision->{'date'}\n";
 		checkoutRevision($revision) or die "Could not check out revision $revision->{'revision'} from $revision->{'file'}";
+		#Hack to deal with out-of-order commits
+		if ( $revision->{'date'} lt $lastdate ) {
+			$revision->{'date'} = $lastdate;
+		}
 		checkinRevision($revision, $newRcsFile) or die "Could not check in revision $revision->{'revision'} to $newRcsFile";
+		$lastdate = $revision->{'date'};
 	}
 	`rcs -u "$newRcsFile"`;
 	`chmod +w "$newRcsFile"`;
