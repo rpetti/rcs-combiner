@@ -71,7 +71,8 @@ sub combineRcs( $$$ ){
 		checkoutRevision($revision) or die "Could not check out revision $revision->{'revision'} from $revision->{'file'}";
 		checkinRevision($revision, $newRcsFile) or die "Could not check in revision $revision->{'revision'} to $newRcsFile";
 	}
-	`rcs -u $newRcsFile`;
+	`rcs -u "$newRcsFile"`;
+	`chmod +w "$newRcsFile"`;
 	unlink basename(getWorkingFile($newRcsFile)); 
 }
 
