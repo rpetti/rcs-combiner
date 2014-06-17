@@ -8,7 +8,9 @@ to recover from a situation where ",v" files have been removed or corrupted, but
 continues regardless.
 
 Usage:
+```
 ./rcs-combiner <path/to/A/version,v> <path/to/B/version,v> <path/to/new/version,v>
+```
 
 This will sort the revisions by date, then resubmit them into a new RCS file at the new path.
 In the event of collisions (a specific revision number existing in both A and B) the revision from A is used.
