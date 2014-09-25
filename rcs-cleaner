@@ -1,0 +1,98 @@
+#!/usr/bin/perl
+
+use File::Copy;
+use File::Basename;
+use version;
+
+sub readRevisions( $ ){
+	my $file = shift;
+	my %rlog = ();
+	open(RLOG, "rlog \"$file\" |");
+	while(my $line = <RLOG>) {
+		chomp $line;
+		if($line =~ /^revision (.*)/) {
+			my $new_revision = {};
+			my $revision_number = $1;
+			my $nextline = <RLOG>;
+			chomp $nextline;
+			$new_revision->{'revision'} = $revision_number;
+			$new_revision->{'date'} = $1 if $nextline =~ /date:\s*([^;]*);/;
+			$new_revision->{'author'} = $1 if $nextline =~ /author:\s*([^;]*);/;
+			$new_revision->{'state'} = $1 if $nextline =~ /state:\s*([^;]*);/;
+			$new_revision->{'file'} = $file;
+			$rlog{$revision_number} = $new_revision;
+		}
+	}
+	close(RLOG);
+	return %rlog;
+}
+
+sub checkoutRevision( $ ){
+	my $revision = shift;
+
+	my $returncode = system("co -f$revision->{'revision'} \"$revision->{'file'}\"");
+	if ($returncode != 0) {
+		print "$!\n";
+		return 0;
+	}
+	return 1;
+}
+
+sub checkinRevision( $$ ){
+	my $revision = shift;
+	my $file = shift;
+
+	my $returncode = system("ci -m -t- -f -l$revision->{'revision'} -d\"$revision->{'date'}\" -s$revision->{'state'} -w$revision->{'author'} \"$file\"");
+	if ($returncode != 0) {
+		print "$!\n";
+		return 0;
+	}
+	return 1;
+}
+
+sub getWorkingFile( $ ){
+	my $file = shift;
+	$file =~ s/,v$//;
+	return $file;
+}
+
+sub sortByRevision { version->parse($a->{'revision'}) cmp version->parse($b->{'revision'}) };
+
+sub cleanRcs( $$$ ){
+	my $rcsFileA = shift;
+	my $keepRevisionListFile = shift;
+	my $newRcsFile = shift;
+	
+	my %rlog = readRevisions($rcsFileA);
+
+	my $lastdate = "";
+
+	open(KEEP, "<", $keepRevisionListFile) or die;
+	my @keepRevisions = <KEEP>;
+	chomp @keepRevisions;
+	close(KEEP);
+
+	foreach $revision (sort sortByRevision values %rlog) {
+		my $match = 0;
+		foreach $keepRevision (@keepRevisions) {
+			if ($keepRevision eq $revision->{'revision'}){
+				$match = 1;
+				last;
+			}
+		}
+		if ($match == 0) {next;}
+		print "$revision->{'revision'}; $revision->{'date'}\n";
+		checkoutRevision($revision) or die "Could not check out revision $revision->{'revision'} from $revision->{'file'}";
+		#Hack to deal with out-of-order commits
+		if ( $revision->{'date'} lt $lastdate ) {
+			$revision->{'date'} = $lastdate;
+		}
+		checkinRevision($revision, $newRcsFile) or die "Could not check in revision $revision->{'revision'} to $newRcsFile";
+		$lastdate = $revision->{'date'};
+	}
+	`rcs -u "$newRcsFile"`;
+	`chmod +w "$newRcsFile"`;
+	unlink basename(getWorkingFile($newRcsFile)); 
+}
+
+cleanRcs($ARGV[0], $ARGV[1], $ARGV[2]);
